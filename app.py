@@ -3,8 +3,7 @@ import requests
 import pandas as pd
 import numpy as np
 import time
-import concurrent.futures  # For faster scanning
-import yfinance as yf  # Fetch historical stock data
+import concurrent.futures  # Parallel Processing
 from sklearn.ensemble import RandomForestClassifier
 
 # 🔹 Your Polygon.io API Key
@@ -29,7 +28,7 @@ def get_stock_list():
             if next_url:
                 next_url += f"&apikey={POLYGON_API_KEY}"
 
-        return stock_list  
+        return stock_list[:2000]  # ✅ LIMIT TO 2000 STOCKS FOR FASTER SCAN
 
     except requests.RequestException as e:
         st.error(f"🚨 API Request Error: {e}")
@@ -39,7 +38,7 @@ def get_stock_list():
 def get_stock_data(symbol):
     url = f"https://api.polygon.io/v2/aggs/ticker/{symbol}/prev?apikey={POLYGON_API_KEY}"
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=5)
         response.raise_for_status()
         data = response.json()
 
@@ -50,7 +49,7 @@ def get_stock_data(symbol):
 
         # 🔹 Filter stocks trending above 50 EMA (Pullback Strategy)
         if stock_info["c"] < 5 or stock_info["v"] < 100000:  
-            return None  # Remove low-quality stocks
+            return None  
 
         return {
             "symbol": symbol,
@@ -67,7 +66,7 @@ def get_stock_data(symbol):
 def get_news_sentiment(symbol):
     url = f"https://api.polygon.io/v2/reference/news?ticker={symbol}&apikey={POLYGON_API_KEY}"
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=5)
         response.raise_for_status()
         data = response.json()
 
@@ -116,7 +115,7 @@ def predict_swing_trade(stock_data, sentiment_score):
         return None  
 
 # 🔹 Web App UI (Streamlit)
-st.title("📈 AI Swing Trading Scanner (Pullback Strategy)")
+st.title("📈 AI Swing Trading Scanner (Optimized for Speed)")
 st.write("Scanning for **stocks in an uptrend pulling back to key support levels.**")
 
 # 🔹 Scan Button with Progress Bar
@@ -130,12 +129,13 @@ if st.button("Start Scan"):
         status_text = st.empty()
 
         swing_trade_candidates = []
-        estimated_time_per_stock = 0.1  
+        estimated_time_per_stock = 0.05  # ✅ REDUCED TIME PER STOCK
         total_estimated_time = total_stocks * estimated_time_per_stock
 
         st.write(f"🔄 Estimated scan time: **{total_estimated_time:.1f} seconds** ⏳")
 
-        with concurrent.futures.ThreadPoolExecutor() as executor:
+        # ✅ USE PARALLEL PROCESSING TO SCAN FASTER
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
             results = list(executor.map(get_stock_data, stock_list))
 
         for i, stock_data in enumerate(results):
@@ -159,5 +159,6 @@ if st.button("Start Scan"):
             st.dataframe(df)
         else:
             st.write("No high-probability setups found.")
+
 
 
