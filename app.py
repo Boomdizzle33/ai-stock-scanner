@@ -5,15 +5,15 @@ import numpy as np
 import time
 from sklearn.ensemble import RandomForestClassifier
 
-# 🔹 Your Polygon.io API Key (Already Inserted)
+# 🔹 Your Polygon.io API Key
 POLYGON_API_KEY = "RFFDShqsKc_lGTkbTdZmsrWppKOO1R9S"
 
 # 🔹 Fetch all U.S. stocks from Polygon.io
 def get_stock_list():
     url = f"https://api.polygon.io/v3/reference/tickers?market=stocks&limit=1000&apikey={POLYGON_API_KEY}"
     try:
-        response = requests.get(url, timeout=10)  # Timeout to prevent freezing
-        response.raise_for_status()  # Raises an error for bad responses (4xx, 5xx)
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
         data = response.json()
 
         if "results" not in data:
@@ -21,13 +21,13 @@ def get_stock_list():
             return []
 
         stock_list = [stock["ticker"] for stock in data["results"]]
-        return stock_list[:50]  # Limit scan to first 50 stocks (Adjust as needed)
+        return stock_list  # Scans the entire U.S. market
 
     except requests.RequestException as e:
         st.error(f"🚨 API Request Error: {e}")
         return []
 
-# 🔹 Fetch stock data from Polygon.io with error handling
+# 🔹 Fetch stock data from Polygon.io
 def get_stock_data(symbol):
     url = f"https://api.polygon.io/v2/aggs/ticker/{symbol}/prev?apikey={POLYGON_API_KEY}"
     try:
@@ -36,23 +36,21 @@ def get_stock_data(symbol):
         data = response.json()
 
         if "results" not in data or not data["results"]:
-            st.warning(f"⚠️ No stock data found for {symbol}. Skipping...")
-            return None
+            return None  # Skip stock if data is missing
 
         stock_info = data["results"][0]
         return {
             "symbol": symbol,
-            "close": stock_info.get("c", None),  # Validate key existence
+            "close": stock_info.get("c", None),
             "volume": stock_info.get("v", None),
             "high": stock_info.get("h", None),
             "low": stock_info.get("l", None)
         }
 
-    except requests.RequestException as e:
-        st.error(f"🚨 Failed to fetch data for {symbol}: {e}")
-        return None
+    except requests.RequestException:
+        return None  # Skip stock if API request fails
 
-# 🔹 Fetch news sentiment score with error handling
+# 🔹 Fetch news sentiment score
 def get_news_sentiment(symbol):
     url = f"https://api.polygon.io/v2/reference/news?ticker={symbol}&apikey={POLYGON_API_KEY}"
     try:
@@ -61,12 +59,11 @@ def get_news_sentiment(symbol):
         data = response.json()
 
         if "results" not in data or not data["results"]:
-            st.warning(f"⚠️ No news found for {symbol}. Sentiment set to neutral (0).")
-            return 0  # Default neutral sentiment if no news found
+            return 0  # Default sentiment if no news found
 
         sentiment_score = 0
         count = 0
-        for article in data["results"][:5]:  # Use latest 5 articles
+        for article in data["results"][:5]:
             if "bullish" in article["title"].lower():
                 sentiment_score += 1
             elif "bearish" in article["title"].lower():
@@ -75,19 +72,15 @@ def get_news_sentiment(symbol):
 
         return sentiment_score / count if count > 0 else 0
 
-    except requests.RequestException as e:
-        st.error(f"🚨 Failed to fetch news sentiment for {symbol}: {e}")
-        return 0  # Default neutral sentiment in case of failure
+    except requests.RequestException:
+        return 0  # Default sentiment if API request fails
 
-# 🔹 AI Model for Breakout Prediction with Data Validation
+# 🔹 AI Model for Breakout Prediction
 def predict_breakout(stock_data, sentiment_score):
     try:
-        # Validate stock data
         if stock_data["close"] is None or stock_data["volume"] is None:
-            st.warning(f"⚠️ Incomplete data for {stock_data['symbol']}. Skipping...")
-            return None
+            return None  # Skip stocks with missing data
 
-        # Sample training data (Replace with real historical data)
         training_data = pd.DataFrame({
             "close": [150, 152, 148, 151, 155, 160, 162, 158],
             "volume": [1_000_000, 1_200_000, 900_000, 1_100_000, 1_300_000, 1_500_000, 1_600_000, 1_400_000],
@@ -100,20 +93,18 @@ def predict_breakout(stock_data, sentiment_score):
         model = RandomForestClassifier(n_estimators=100)
         model.fit(X, y)
 
-        # ✅ FIX: Convert input to Pandas DataFrame with column names
         new_data = pd.DataFrame([[stock_data["close"], stock_data["volume"], sentiment_score]],
                                 columns=["close", "volume", "sentiment"])
 
         prediction = model.predict_proba(new_data)
         return prediction[0][1] * 100  # Probability of breakout
 
-    except Exception as e:
-        st.error(f"🚨 AI Model Error: {e}")
-        return None
+    except Exception:
+        return None  # Skip stock if AI model fails
 
 # 🔹 Web App UI (Streamlit)
 st.title("📈 AI Stock Scanner for Breakouts")
-st.write("Scan the entire U.S. stock market for stocks with high breakout probability.")
+st.write("Scanning the **entire U.S. stock market** for high-probability trades...")
 
 # 🔹 Scan Button with Progress Bar
 if st.button("Start Scan"):
@@ -122,13 +113,11 @@ if st.button("Start Scan"):
         st.error("🚨 No stocks found. Check API connection and usage limits.")
     else:
         total_stocks = len(stock_list)
-
-        # Progress bar setup
         progress_bar = st.progress(0)
         status_text = st.empty()
 
         breakout_candidates = []
-        estimated_time_per_stock = 0.5  # Adjust based on API speed
+        estimated_time_per_stock = 0.2  # Adjust for API speed
         total_estimated_time = total_stocks * estimated_time_per_stock
 
         st.write(f"🔄 Estimated scan time: **{total_estimated_time:.1f} seconds** ⏳")
@@ -162,4 +151,5 @@ if st.button("Start Scan"):
             st.dataframe(df)
         else:
             st.write("No high-probability setups found.")
+
 
