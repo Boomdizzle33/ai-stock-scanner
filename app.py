@@ -17,6 +17,7 @@ def get_stock_list():
 
     try:
         while next_url:
+            print(f"Fetching stock data from: {next_url}")  
             response = requests.get(next_url, timeout=10)
             response.raise_for_status()
             data = response.json()
@@ -28,7 +29,10 @@ def get_stock_list():
             if next_url:
                 next_url += f"&apikey={POLYGON_API_KEY}"
 
-        return stock_list[:2000]  # ✅ LIMIT TO 2000 STOCKS FOR FASTER SCAN
+            time.sleep(1)  # ✅ Prevents API rate limiting
+
+        print(f"✅ Total stocks fetched: {len(stock_list)}")
+        return stock_list[:2000]  # ✅ Test with 2000 stocks first
 
     except requests.RequestException as e:
         st.error(f"🚨 API Request Error: {e}")
@@ -47,8 +51,8 @@ def get_stock_data(symbol):
 
         stock_info = data["results"][0]
 
-        # 🔹 Filter stocks trending above 50 EMA (Pullback Strategy)
-        if stock_info["c"] < 5 or stock_info["v"] < 100000:  
+        # 🔹 Adjust filter to allow more stocks
+        if stock_info["c"] < 3 or stock_info["v"] < 50000:  # ✅ Less strict filter
             return None  
 
         return {
@@ -62,7 +66,7 @@ def get_stock_data(symbol):
     except requests.RequestException:
         return None  
 
-# 🔹 Fetch News Sentiment Score
+# 🔹 Fetch News Sentiment Score (More Sensitive)
 def get_news_sentiment(symbol):
     url = f"https://api.polygon.io/v2/reference/news?ticker={symbol}&apikey={POLYGON_API_KEY}"
     try:
@@ -75,11 +79,13 @@ def get_news_sentiment(symbol):
 
         sentiment_score = 0
         count = 0
-        for article in data["results"][:5]:
+        for article in data["results"][:5]:  
             if "bullish" in article["title"].lower():
-                sentiment_score += 1
+                sentiment_score += 2  # ✅ Increased bullish weight
             elif "bearish" in article["title"].lower():
-                sentiment_score -= 1
+                sentiment_score -= 2  # ✅ Increased bearish weight
+            else:
+                sentiment_score += 0.5  # ✅ Small weight for neutral articles
             count += 1
 
         return sentiment_score / count if count > 0 else 0
@@ -87,7 +93,7 @@ def get_news_sentiment(symbol):
     except requests.RequestException:
         return 0  
 
-# 🔹 AI Model for Swing Trade Prediction
+# 🔹 AI Model for Swing Trade Prediction (Now Prints Debugging Info)
 def predict_swing_trade(stock_data, sentiment_score):
     try:
         if stock_data["close"] is None or stock_data["volume"] is None:
@@ -109,6 +115,9 @@ def predict_swing_trade(stock_data, sentiment_score):
                                 columns=["close", "volume", "sentiment"])
 
         prediction = model.predict_proba(new_data)
+        
+        print(f"🧠 AI Prediction for {stock_data['symbol']}: {prediction[0][1] * 100:.2f}% probability")
+        
         return prediction[0][1] * 100  
 
     except Exception:
@@ -129,20 +138,22 @@ if st.button("Start Scan"):
         status_text = st.empty()
 
         swing_trade_candidates = []
-        estimated_time_per_stock = 0.05  # ✅ REDUCED TIME PER STOCK
+        estimated_time_per_stock = 0.05  
         total_estimated_time = total_stocks * estimated_time_per_stock
 
         st.write(f"🔄 Estimated scan time: **{total_estimated_time:.1f} seconds** ⏳")
 
-        # ✅ USE PARALLEL PROCESSING TO SCAN FASTER
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
             results = list(executor.map(get_stock_data, stock_list))
 
         for i, stock_data in enumerate(results):
             if stock_data:
                 sentiment_score = get_news_sentiment(stock_data["symbol"])
                 swing_prob = predict_swing_trade(stock_data, sentiment_score)
-                if swing_prob and swing_prob > 75:
+
+                print(f"🔍 {stock_data['symbol']} | Close: {stock_data['close']} | Volume: {stock_data['volume']} | Sentiment: {sentiment_score} | AI Probability: {swing_prob}%")
+
+                if swing_prob and swing_prob > 60:  # ✅ Lowered threshold to catch more trades
                     swing_trade_candidates.append((stock_data["symbol"], swing_prob))
 
             progress_bar.progress((i + 1) / total_stocks)
@@ -159,6 +170,7 @@ if st.button("Start Scan"):
             st.dataframe(df)
         else:
             st.write("No high-probability setups found.")
+
 
 
 
