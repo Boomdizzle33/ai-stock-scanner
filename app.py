@@ -27,7 +27,7 @@ def get_stock_list():
 
             next_url = data.get("next_url", None)  
             if next_url:
-                next_url = f"https://api.polygon.io{next_url}&apikey={POLYGON_API_KEY}"  
+                next_url = f"{next_url}&apikey={POLYGON_API_KEY}"  # ✅ Fixes incorrect URL format
 
             time.sleep(1)  
 
